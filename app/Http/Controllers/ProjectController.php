@@ -7,54 +7,88 @@ use Illuminate\Http\Request;
 
 class ProjectController extends Controller
 {
-    /**
-     * Display a listing of the resource.
-     */
     public function index()
     {
-        $projects = Project::get();
-        return response()->json($projects);
+        $projects = Project::all();
+        return response()->json([
+            'code' => 200,
+            'message' => 'Project list retrieved successfully',
+            'data' => $projects,
+        ], 200);
     }
- 
-    /**
-     * Store a newly created resource in storage.
-     */
+
     public function store(Request $request)
     {
         $project = new Project();
         $project->name = $request->name;
         $project->description = $request->description;
         $project->save();
-        return response()->json($project);
+
+        return response()->json([
+            'code' => 201,
+            'message' => 'Project created successfully',
+            'data' => $project,
+        ], 201);
     }
- 
-    /**
-     * Display the specified resource.
-     */
+
     public function show(string $id)
     {
         $project = Project::find($id);
-        return response()->json($project);
+
+        if (!$project) {
+            return response()->json([
+                'code' => 404,
+                'message' => 'Project not found',
+                'data' => null,
+            ], 404);
+        }
+
+        return response()->json([
+            'code' => 200,
+            'message' => 'Project retrieved successfully',
+            'data' => $project,
+        ], 200);
     }
- 
-    /**
-     * Update the specified resource in storage.
-     */
+
     public function update(Request $request, string $id)
     {
         $project = Project::find($id);
+
+        if (!$project) {
+            return response()->json([
+                'code' => 404,
+                'message' => 'Project not found',
+                'data' => null,
+            ], 404);
+        }
+
         $project->name = $request->name;
         $project->description = $request->description;
         $project->save();
-        return response()->json($project);
+
+        return response()->json([
+            'code' => 200,
+            'message' => 'Project updated successfully',
+            'data' => $project,
+        ], 200);
     }
- 
-    /**
-     * Remove the specified resource from storage.
-     */
+
     public function destroy(string $id)
     {
-        Project::destroy($id);
-        return response()->json(['message' => 'Deleted']);
+        $project = Project::find($id);
+
+        if (!$project) {
+            return response()->json([
+                'code' => 404,
+                'message' => 'Project not found',
+            ], 404);
+        }
+
+        $project->delete();
+
+        return response()->json([
+            'code' => 200,
+            'message' => 'Project deleted successfully',
+        ], 200);
     }
 }

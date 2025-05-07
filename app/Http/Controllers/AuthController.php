@@ -2,101 +2,144 @@
 
 namespace App\Http\Controllers;
 
-use Illuminate\Http\Request;
-use App\Http\Controllers\Controller;
 use App\Models\User;
-use Validator;
+use Illuminate\Http\Request;
+use Illuminate\Auth\Events\Registered;
+use Illuminate\Support\Facades\Validator;
 
 class AuthController extends Controller
 {
-    //
-    /**
-     * Register a User.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    public function register() {
+    public function register()
+    {
         $validator = Validator::make(request()->all(), [
-            'name' => 'required',
+            'name' => 'required|string',
             'email' => 'required|email|unique:users',
             'password' => 'required|confirmed|min:8',
         ]);
-  
-        if($validator->fails()){
-            return response()->json($validator->errors()->toJson(), 400);
+
+        if ($validator->fails()) {
+            return response()->json([
+                'code' => 400,
+                'message' => 'Validation failed',
+                'data' => $validator->errors(),
+            ], 400);
         }
-  
-        $user = new User;
-        $user->name = request()->name;
-        $user->email = request()->email;
-        $user->password = bcrypt(request()->password);
-        $user->save();
-  
-        return response()->json($user, 201);
+
+        $user = User::create([
+            'name' => request()->name,
+            'email' => request()->email,
+            'password' => bcrypt(request()->password),
+        ]);
+
+        // Gửi mail xác thực
+        event(new Registered($user));
+
+        return response()->json([
+            'code' => 201,
+            'message' => 'User registered successfully. Please verify your email.',
+            'data' => $user,
+        ], 201);
     }
-  
-  
+
     /**
-     * Get a JWT via given credentials.
-     *
-     * @return \Illuminate\Http\JsonResponse
+     * Xác thực email (không dùng session / JWT)
      */
+    public function verifyEmail(Request $request, $id, $hash)
+    {
+        $user = User::find($id);
+
+        if (!$user) {
+            return response()->json([
+                'code' => 404,
+                'message' => 'User not found',
+            ], 404);
+        }
+
+        if (!hash_equals((string) $hash, sha1($user->getEmailForVerification()))) {
+            return response()->json([
+                'code' => 403,
+                'message' => 'Invalid verification link',
+            ], 403);
+        }
+
+        if ($user->hasVerifiedEmail()) {
+            return response()->json([
+                'code' => 200,
+                'message' => 'Email already verified',
+            ]);
+        }
+
+        $user->markEmailAsVerified();
+
+        return response()->json([
+            'code' => 200,
+            'message' => 'Email verified successfully',
+        ]);
+    }
+
     public function login()
     {
         $credentials = request(['email', 'password']);
-  
+
         if (! $token = auth()->attempt($credentials)) {
-            return response()->json(['error' => 'Unauthorized'], 401);
+            return response()->json([
+                'code' => 401,
+                'message' => 'Unauthorized',
+                'data' => null,
+            ], 401);
         }
 
-        return $this->respondWithToken($token);
+        $user = auth()->user();
+
+        if (!$user->hasVerifiedEmail()) {
+            return response()->json([
+                'code' => 403,
+                'message' => 'Email not verified',
+                'data' => null,
+            ], 403);
+        }
+
+        return response()->json([
+            'code' => 200,
+            'message' => 'Login successfully',
+            'data' => $this->getTokenResponse($token),
+        ], 200);
     }
-  
-    /**
-     * Get the authenticated User.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+
     public function me()
     {
-        return response()->json(auth()->user());
+        return response()->json([
+            'code' => 200,
+            'message' => 'Authenticated user fetched successfully',
+            'data' => auth()->user(),
+        ]);
     }
-  
-    /**
-     * Log the user out (Invalidate the token).
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+
     public function logout()
     {
         auth()->logout();
-  
-        return response()->json(['message' => 'Successfully logged out']);
+
+        return response()->json([
+            'code' => 200,
+            'message' => 'Successfully logged out',
+        ]);
     }
-  
-    /**
-     * Refresh a token.
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
+
     public function refresh()
     {
-        return $this->respondWithToken(auth()->refresh());
-    }
-  
-    /**
-     * Get the token array structure.
-     *
-     * @param  string $token
-     *
-     * @return \Illuminate\Http\JsonResponse
-     */
-    protected function respondWithToken($token)
-    {
         return response()->json([
+            'code' => 200,
+            'message' => 'Token refreshed successfully',
+            'data' => $this->getTokenResponse(auth()->refresh()),
+        ]);
+    }
+
+    protected function getTokenResponse($token)
+    {
+        return [
             'access_token' => $token,
             'token_type' => 'bearer',
-            'expires_in' => auth()->factory()->getTTL() * 60
-        ]);
+            'expires_in' => auth()->factory()->getTTL() * 60,
+        ];
     }
 }
